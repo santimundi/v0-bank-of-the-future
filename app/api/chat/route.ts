@@ -203,8 +203,18 @@ export async function POST(req: Request) {
       return null
     }).filter(Boolean)
 
+    const oldestTx = transactions.length > 0 ? transactions[transactions.length - 1].date : null
+    const newestTx = transactions.length > 0 ? transactions[0].date : null
+
     const realTimeSnapshot = {
       generatedAt: now.toISOString(),
+      dataSummary: {
+        totalTransactionsAvailable: transactions.length,
+        dateRange: {
+            start: oldestTx,
+            end: newestTx
+        }
+      },
       totalBalance,
       availableCash,
       monthlySpendingLast30Days: monthlySpending,
@@ -268,6 +278,8 @@ ${JSON.stringify(realTimeSnapshot, null, 2)}
 
 GUIDELINES:
 - Answer based ONLY on the provided data.
+- IMPORTANT: "RECENT TRANSACTIONS" only shows the last 50 items. Refer to "REAL-TIME SNAPSHOT" -> "dataSummary" for the full date range availability.
+- If asked about history older than the provided detailed transactions, state that you only have details for the recent period but can see summary stats.
 - If the user asks about "this month" or "this year", filter the transactions in the data provided.
 - Current Date: ${new Date().toISOString().split('T')[0]}
 - Be professional but friendly.

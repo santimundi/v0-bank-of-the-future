@@ -38,6 +38,7 @@ import {
   Store,
   PiggyBank,
   Gift,
+  PieChart,
 } from "lucide-react"
 
 interface NavItem {
@@ -50,6 +51,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Home", href: "/home", icon: Home },
   { label: "Accounts", href: "/accounts", icon: Wallet },
+  { label: "Budgets", href: "/budgets", icon: PieChart },
   { label: "Payments & Transfers", href: "/payments", icon: ArrowLeftRight },
   { label: "Cards", href: "/cards", icon: CreditCard },
   { label: "Savings Goals", href: "/savings-goals", icon: PiggyBank },

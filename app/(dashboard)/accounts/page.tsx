@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { ArrowUpRight, ArrowDownRight, Search, TrendingUp, Bot, Copy, Eye, EyeOff, RefreshCw, Loader2, Sparkles } from "lucide-react"
+import { ArrowUpRight, ArrowDownRight, Search, TrendingUp, Bot, Copy, Eye, EyeOff, RefreshCw, Loader2, Sparkles, AlertTriangle } from "lucide-react"
 import type { Account, Transaction } from "@/lib/types"
 import { AskAIBankerWidget, AskAIButton } from "@/components/ai/ask-ai-banker-widget"
 import { createClient } from "@/lib/supabase/client"
@@ -224,17 +224,37 @@ function TransactionsTable({
                     </div>
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell">
-                    <Badge variant="secondary" className={`text-xs ${getCategoryColor(txn.category)}`}>
-                      {txn.category}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary" className={`text-xs ${getCategoryColor(txn.category)}`}>
+                        {txn.category}
+                      </Badge>
+                      {txn.categorySource === "auto_rule" && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] py-0 border-dashed"
+                          title={txn.categoryReason || "Auto-categorized"}
+                        >
+                          Auto
+                        </Badge>
+                      )}
+                    </div>
                   </td>
                   <td
                     className={`px-4 py-3 text-sm font-medium text-right ${
                       txn.type === "credit" ? "text-emerald-500" : "text-foreground"
                     }`}
                   >
-                    {txn.type === "credit" ? "+" : "-"}
-                    {formatCurrency(txn.amount)}
+                    <div className="flex items-center justify-end gap-2">
+                      <span>
+                        {txn.type === "credit" ? "+" : "-"}
+                        {formatCurrency(txn.amount)}
+                      </span>
+                      {txn.isUnusual && (
+                        <div title={txn.unusualReason || "Unusual activity detected"}>
+                          <AlertTriangle className="h-4 w-4 text-amber-500 cursor-help" />
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-muted-foreground text-right hidden md:table-cell">
                     {formatCurrency(txn.balance)}
@@ -462,6 +482,11 @@ export default function AccountsPage() {
           description: t.description,
           merchant: t.merchant,
           category: t.category,
+          categorySource: t.category_source,
+          categoryConfidence: Number(t.category_confidence),
+          categoryReason: t.category_reason,
+          isUnusual: t.is_unusual,
+          unusualReason: t.unusual_reason,
           amount: Number(t.amount),
           balance: Number(t.balance_after),
           type: t.type,

@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Inter, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { RoleProvider } from "@/lib/role-context"
+import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
@@ -44,10 +45,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
-        <RoleProvider>{children}</RoleProvider>
-        <Analytics />
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+          <RoleProvider>{children}</RoleProvider>
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   )
