@@ -1,17 +1,40 @@
 import { OpenAI } from "openai"
 import { OpenAIStream, StreamingTextResponse } from "ai"
-import { createClient } from "@/lib/supabase/server"
+import { createDirectClient } from "@/lib/supabase/direct-client"
 
 // Set the runtime to nodejs for better compatibility
 export const runtime = "nodejs"
+
+// Helper to safely fetch data
+async function fetchData(table: string, userId: string, column = "user_id") {
+  const supabase = createDirectClient()
+  try {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq(column, userId)
+    
+    if (error) {
+      console.error(`Error fetching ${table}:`, error.message)
+      return []
+    }
+    return data || []
+  } catch (err) {
+    console.error(`Exception fetching ${table}:`, err)
+    return []
+  }
+}
 
 export async function POST(req: Request) {
   try {
     const { messages, userId: requestedUserId } = await req.json()
 
-    // Initialize OpenAI client
+    console.log("Checking API Keys:", { 
+      hasOpenAI: !!process.env.OPENAI_API_KEY, 
+      envKeys: Object.keys(process.env).filter(k => k.includes('API')) 
+    })
+
     if (!process.env.OPENAI_API_KEY) {
-      console.error("Missing OPENAI_API_KEY")
       return new Response("Missing OPENAI_API_KEY", { status: 500 })
     }
 
@@ -19,91 +42,124 @@ export async function POST(req: Request) {
       apiKey: process.env.OPENAI_API_KEY,
     })
 
-    // Get the current user
-    const supabase = await createClient()
+    // Default to Sarah Chen for demo if no user provided
+    const userId = requestedUserId || "11111111-1111-1111-1111-111111111111"
     
-    // Determine userId:
-    // 1. Try auth (if logged in)
-    // 2. Use requestedUserId (from client, e.g. role switcher)
-    // 3. Fallback to demo default
-    
-    let userId = "11111111-1111-1111-1111-111111111111" // Default to Sarah Chen for demo
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    console.log(`[AI Chat] Fetching data for user: ${userId}`)
 
-    if (user) {
-      userId = user.id
-    } else if (requestedUserId) {
-        userId = requestedUserId
-    }
-
-    // Fetch user's financial data for context
-    const [accounts, cards, loans, transactions, holdings, goals, rewardProfile, rewardActivities] = await Promise.all([
-      supabase.from("accounts").select("*").eq("user_id", userId),
-      supabase.from("cards").select("*").eq("user_id", userId),
-      supabase.from("loans").select("*").eq("user_id", userId),
-      supabase.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: false }).limit(10),
-      supabase.from("portfolio_holdings").select("*").eq("user_id", userId),
-      supabase.from("savings_goals").select("*").eq("user_id", userId),
-      supabase.from("reward_profiles").select("*").eq("user_id", userId).single(),
-      supabase.from("reward_activities").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(5),
+    // 1. Fetch Accounts first (needed for transactions)
+    const accounts = await fetchData("accounts", userId)
+    const accountIds = accounts.map((a: any) => a.id)
+    
+    // 2. Fetch other data in parallel
+    const [
+      cards,
+      loans,
+      holdings,
+      watchlist,
+      goals,
+      rewardProfileResult,
+      rewardActivities,
+      supportTickets
+    ] = await Promise.all([
+      fetchData("cards", userId),
+      fetchData("loans", userId),
+      fetchData("portfolio_holdings", userId),
+      fetchData("watchlist", userId),
+      fetchData("savings_goals", userId),
+      fetchData("reward_profiles", userId), // This returns an array, we take first
+      fetchData("reward_activities", userId),
+      fetchData("support_tickets", userId)
     ])
 
-    // Construct the system prompt with context
+    // 3. Fetch Transactions (using account IDs)
+    let transactions: any[] = []
+    if (accountIds.length > 0) {
+      const supabase = createDirectClient()
+      const { data: txData, error: txError } = await supabase
+        .from("transactions")
+        .select("*")
+        .in("account_id", accountIds)
+        .order("date", { ascending: false })
+      
+      if (!txError && txData) {
+        transactions = txData
+      } else if (txError) {
+        console.error("Error fetching transactions:", txError.message)
+      }
+    }
+
+    // 4. Fetch Goal Transactions
+    let goalTransactions: any[] = []
+    const goalIds = goals.map((g: any) => g.id)
+    if (goalIds.length > 0) {
+      const supabase = createDirectClient()
+      const { data: gTxData, error: gTxError } = await supabase
+        .from("savings_goal_transactions")
+        .select("*")
+        .in("goal_id", goalIds)
+        .order("date", { ascending: false })
+        
+      if (!gTxError && gTxData) {
+        goalTransactions = gTxData
+      }
+    }
+
+    const rewardProfile = rewardProfileResult.length > 0 ? rewardProfileResult[0] : null
+
+    // Prepare System Prompt
     const systemPrompt = `
-  You are an AI Banker Assistant for "Bank of the Future". You have access to the user's financial data.
-  Your goal is to provide helpful, accurate, and concise financial advice and answer questions about their accounts.
+You are an AI Banker Assistant for "Bank of the Future". You have access to the user's complete financial data.
+Your goal is to provide accurate, helpful, and concise financial advice.
 
-  User Context:
-  - ID: ${userId}
+USER CONTEXT:
+- ID: ${userId}
+- Name: Sarah Chen (Demo User)
 
-  Financial Data:
-  1. ACCOUNTS:
-  ${JSON.stringify(accounts.data, null, 2)}
+FINANCIAL DATA OVERVIEW:
+- Accounts: ${accounts.length}
+- Cards: ${cards.length}
+- Loans: ${loans.length}
+- Transactions: ${transactions.length}
+- Investments: ${holdings.length}
+- Savings Goals: ${goals.length}
 
-  2. CARDS:
-  ${JSON.stringify(cards.data, null, 2)}
+DETAILED DATA:
 
-  3. LOANS:
-  ${JSON.stringify(loans.data, null, 2)}
+1. ACCOUNTS:
+${JSON.stringify(accounts, null, 2)}
 
-  4. RECENT TRANSACTIONS (Last 10):
-  ${JSON.stringify(transactions.data, null, 2)}
+2. CARDS:
+${JSON.stringify(cards, null, 2)}
 
-  5. INVESTMENT PORTFOLIO:
-  ${JSON.stringify(holdings.data, null, 2)}
+3. LOANS:
+${JSON.stringify(loans, null, 2)}
 
-  6. SAVINGS GOALS:
-  ${JSON.stringify(goals.data, null, 2)}
-  
-  7. REWARDS & POINTS:
-  - Profile: ${JSON.stringify(rewardProfile.data, null, 2)}
-  - Recent Activity: ${JSON.stringify(rewardActivities.data, null, 2)}
+4. RECENT TRANSACTIONS (Last 50 shown of ${transactions.length}):
+${JSON.stringify(transactions.slice(0, 50), null, 2)}
 
-  Guidelines:
-  - Be professional yet friendly.
-  - Use the provided data to answer questions specifically. e.g., "Your current balance in your Primary Account is AED 45,000".
-  - If the user asks about something not in the data, explain that you don't have that information.
-  - Do NOT make up transaction data that isn't there.
-  - Format currency appropriately (e.g., AED 1,000.00).
-  - If the user asks to perform an action (like transfer money), guide them on how to do it or say "I can help you prepare a transfer" (in a real app you'd call a function).
-  - Keep responses concise.
-  
-   Formatting Guidelines:
-  - Use Markdown for formatting.
-  - Do NOT use double asterisks (**) for bolding headers or lists if it clutters the view. Instead, use clean spacing and indentation.
-  - For lists of items (like transactions or portfolio holdings), follow this clean format:
-  
-    1. Item Name
-       - Detail: Value
-       - Detail: Value
-  
-  - Avoid excessive bolding within sentences. Use it only for key figures if absolutely necessary.
-  `
+5. INVESTMENT PORTFOLIO:
+${JSON.stringify(holdings, null, 2)}
 
-    // Request the OpenAI API for the response based on the prompt
+6. SAVINGS GOALS:
+${JSON.stringify(goals, null, 2)}
+
+7. REWARDS:
+- Profile: ${JSON.stringify(rewardProfile, null, 2)}
+- Recent Activity: ${JSON.stringify(rewardActivities.slice(0, 10), null, 2)}
+
+GUIDELINES:
+- Answer based ONLY on the provided data.
+- If the user asks about "this month" or "this year", filter the transactions in the data provided.
+- Current Date: ${new Date().toISOString().split('T')[0]}
+- Be professional but friendly.
+- Format currency as AED (e.g., AED 1,250.00).
+- Do not make up data. If something is missing, say so.
+`
+
+    // Log for debugging
+    console.log(`[AI Chat] System prompt prepared. Data counts: Accounts=${accounts.length}, Tx=${transactions.length}, Holdings=${holdings.length}`)
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       stream: true,
@@ -113,13 +169,11 @@ export async function POST(req: Request) {
       ],
     })
 
-    // Convert the response into a friendly text-stream
     const stream = OpenAIStream(response as any)
-
-    // Respond with the stream
     return new StreamingTextResponse(stream)
-  } catch (error) {
+
+  } catch (error: any) {
     console.error("Error in chat route:", error)
-    return new Response(error instanceof Error ? error.message : "Internal Server Error", { status: 500 })
+    return new Response(error.message || "Internal Server Error", { status: 500 })
   }
 }

@@ -1,1 +1,0 @@
-{"version":3,"sources":["../../../../../../../AI%20Agents/Future_Banking/v0-bank-of-the-future/app/%28dashboard%29/rm-workspace/loading.tsx"],"sourcesContent":["export default function Loading() {\n  return null\n}\n"],"names":[],"mappings":"uCAAe,SAAS,IACtB,OAAO,IACT"}

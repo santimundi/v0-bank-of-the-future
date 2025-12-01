@@ -418,12 +418,16 @@ export default function AccountsPage() {
       const supabase = createClient()
 
       // Fetch Accounts
+      console.log("Fetching accounts for user:", currentUser?.id)
       const { data: accountsData, error: accountsError } = await supabase
         .from("accounts")
         .select("*")
         .eq("user_id", currentUser.id)
 
-      if (accountsError) console.error("Error fetching accounts:", accountsError)
+      if (accountsError) {
+        console.error("Error fetching accounts FULL OBJECT:", JSON.stringify(accountsError, null, 2))
+        console.error("Error details:", accountsError.message, accountsError.details, accountsError.hint)
+      }
       
       const mappedAccounts: Account[] = (accountsData || []).map((a: any) => ({
         id: a.id,

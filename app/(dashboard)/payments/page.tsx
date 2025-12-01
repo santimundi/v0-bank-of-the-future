@@ -390,6 +390,9 @@ function TransferForm() {
       {/* Success Dialog */}
       <Dialog open={showSuccess} onOpenChange={setShowSuccess}>
         <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="sr-only">Transfer Initiated</DialogTitle>
+          </DialogHeader>
           <div className="text-center py-6">
             <div className="flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/20 mx-auto mb-4">
               <CheckCircle2 className="h-8 w-8 text-emerald-500" />

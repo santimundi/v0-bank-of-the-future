@@ -628,7 +628,7 @@ function AddFundsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Funds to "{goal.name}"</DialogTitle>
+          <DialogTitle>Add Funds to {goal?.name || "Goal"}</DialogTitle>
           <DialogDescription>
             Current balance: {formatCurrency(goal.currentAmount, goal.currency)} of{" "}
             {formatCurrency(goal.targetAmount, goal.currency)}

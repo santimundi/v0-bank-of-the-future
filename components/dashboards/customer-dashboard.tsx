@@ -72,7 +72,6 @@ export function CustomerDashboard() {
           .select("*")
           .in("account_id", accountIds)
           .order("date", { ascending: false })
-          .limit(5)
 
         if (txError) console.error("Error fetching transactions:", txError)
 
@@ -218,7 +217,7 @@ export function CustomerDashboard() {
           <CardContent>
             <div className="space-y-3">
               {transactions.length > 0 ? (
-                transactions.map((txn) => (
+                transactions.slice(0, 5).map((txn) => (
                   <div
                     key={txn.id}
                     className="flex items-center justify-between py-2 border-b border-border last:border-0"

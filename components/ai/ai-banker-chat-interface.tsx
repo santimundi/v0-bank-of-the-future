@@ -114,7 +114,11 @@ export function AIBankerChatInterface({ embedded = false, initialMessage }: AIBa
   }
 
   useEffect(() => {
-    scrollToBottom()
+    // Small timeout to allow the DOM to update and ScrollArea to recalculate
+    const timeoutId = setTimeout(() => {
+      scrollToBottom()
+    }, 100)
+    return () => clearTimeout(timeoutId)
   }, [messages])
 
   const toggleScope = (scopeId: string) => {
@@ -185,7 +189,7 @@ export function AIBankerChatInterface({ embedded = false, initialMessage }: AIBa
       */}
 
       {/* Messages Area */}
-      <ScrollArea className="flex-1 px-4">
+      <ScrollArea className="flex-1 px-4 min-h-0">
         <div className="py-4 space-y-6">
           {!messages || messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full py-12 text-center">

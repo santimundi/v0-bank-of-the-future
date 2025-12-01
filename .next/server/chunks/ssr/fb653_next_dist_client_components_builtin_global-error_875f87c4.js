@@ -1,3 +1,0 @@
-module.exports=[28474,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(30831);a.n(d("[project]/AI Agents/Future_Banking/v0-bank-of-the-future/node_modules/next/dist/client/components/builtin/global-error.js <module evaluation>"))},2346,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(30831);a.n(d("[project]/AI Agents/Future_Banking/v0-bank-of-the-future/node_modules/next/dist/client/components/builtin/global-error.js"))},99254,a=>{"use strict";a.i(28474);var b=a.i(2346);a.n(b)}];
-
-//# sourceMappingURL=fb653_next_dist_client_components_builtin_global-error_875f87c4.js.map

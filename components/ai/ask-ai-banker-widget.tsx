@@ -70,6 +70,8 @@ export function AskAIBankerWidget({
       </Card>
 
       <SheetContent className="sm:max-w-md w-[400px] p-0 flex flex-col">
+        <SheetTitle className="sr-only">AI Banker Chat</SheetTitle>
+        <SheetDescription className="sr-only">Chat with the AI Banker</SheetDescription>
         <AIBankerChatInterface embedded={false} initialMessage={initialQuestion} />
       </SheetContent>
     </Sheet>
@@ -97,6 +99,8 @@ export function AskAIButton({
         )}
       </SheetTrigger>
       <SheetContent className="sm:max-w-md w-[400px] p-0 flex flex-col">
+        <SheetTitle className="sr-only">AI Banker Chat</SheetTitle>
+        <SheetDescription className="sr-only">Chat with the AI Banker</SheetDescription>
         <AIBankerChatInterface embedded={false} initialMessage={initialQuestion} />
       </SheetContent>
     </Sheet>
