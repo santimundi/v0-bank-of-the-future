@@ -24,7 +24,7 @@ import {
   TrendingDown,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import type { Account, Transaction, Card as CardType, Loan } from "@/lib/types"
+import type { Account, Transaction, Card as CardType, Loan, TransactionCategory } from "@/lib/types"
 
 export function CustomerDashboard() {
   const { currentUser } = useRole()
@@ -35,6 +35,20 @@ export function CustomerDashboard() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+    const STORAGE_KEY = "bof-last-categorize-run"
+    if (window.sessionStorage.getItem(STORAGE_KEY)) return
+    window.sessionStorage.setItem(STORAGE_KEY, new Date().toISOString())
+
+    fetch("/api/transactions/categorize", { method: "POST" })
+      .then(() => fetch("/api/transactions/detect-unusual", { method: "POST" }))
+      .catch((error) => {
+      console.warn("Auto-processing failed", error)
+      window.sessionStorage.removeItem(STORAGE_KEY)
+    })
+  }, [])
+
+  useEffect(() => {
     async function fetchData() {
       if (!currentUser?.id) return
 
@@ -42,7 +56,6 @@ export function CustomerDashboard() {
       const supabase = createClient()
 
       // Fetch Accounts
-      console.log("CustomerDashboard: Fetching data for user:", currentUser?.id)
       const { data: accountsData, error: accountsError } = await supabase
         .from("accounts")
         .select("*")
@@ -50,8 +63,6 @@ export function CustomerDashboard() {
 
       if (accountsError) {
         console.error("Error fetching accounts:", accountsError)
-      } else {
-        console.log("CustomerDashboard: Fetched accounts count:", accountsData?.length)
       }
       
       const mappedAccounts: Account[] = (accountsData || []).map((a: any) => ({
@@ -72,7 +83,6 @@ export function CustomerDashboard() {
       // Fetch Transactions (for all accounts)
       if (mappedAccounts.length > 0) {
         const accountIds = mappedAccounts.map(a => a.id)
-        console.log("CustomerDashboard: Fetching transactions for account IDs:", accountIds)
         const { data: txData, error: txError } = await supabase
           .from("transactions")
           .select("*")
@@ -80,21 +90,33 @@ export function CustomerDashboard() {
           .order("date", { ascending: false })
 
         if (txError) console.error("Error fetching transactions:", txError)
-        else console.log("CustomerDashboard: Fetched transactions count:", txData?.length)
 
-        const mappedTransactions: Transaction[] = (txData || []).map((t: any) => ({
-          id: t.id,
-          accountId: t.account_id,
-          date: t.date,
-          description: t.description,
-          merchant: t.merchant,
-          category: t.category,
-          amount: Number(t.amount),
-          balance: Number(t.balance_after),
-          type: t.type,
-          status: t.status,
-          reference: t.reference
-        }))
+        const mappedTransactions: Transaction[] = (txData || []).map((t: any) => {
+          const normalizedCategory = (t.category as TransactionCategory) || "other"
+          const confidenceValue =
+            typeof t.category_confidence === "number"
+              ? t.category_confidence
+              : Number(t.category_confidence)
+
+          return {
+            id: t.id,
+            accountId: t.account_id,
+            date: t.date,
+            description: t.description,
+            merchant: t.merchant,
+            category: normalizedCategory,
+            categorySource: t.category_source,
+            categoryConfidence: Number.isFinite(confidenceValue) ? confidenceValue : 0,
+            categoryReason: t.category_reason,
+            isUnusual: t.is_unusual,
+            unusualReason: t.unusual_reason,
+            amount: Number(t.amount),
+            balance: Number(t.balance_after),
+            type: t.type,
+            status: t.status,
+            reference: t.reference,
+          }
+        })
         
         setTransactions(mappedTransactions)
       } else {
@@ -243,21 +265,33 @@ export function CustomerDashboard() {
                       </div>
                       <div>
                         <p className="text-sm font-medium">{txn.description}</p>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-muted-foreground">{formatDate(txn.date)}</span>
                           <Badge variant="secondary" className={`text-[10px] py-0 ${getCategoryColor(txn.category)}`}>
                             {txn.category}
                           </Badge>
+                          {txn.categorySource === "auto_rule" && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] py-0 border-dashed"
+                              title={txn.categoryReason || "Auto-categorized by spending rules"}
+                            >
+                              Auto
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </div>
-                    <span
-                      className={`text-sm font-medium ${txn.type === "credit" ? "text-emerald-500" : "text-foreground"}`}
-                    >
-                      {txn.type === "credit" ? "+" : "-"}
-                      {formatCurrency(txn.amount)}
-                    </span>
-                  </div>
+                      <span className={`text-sm font-medium ${txn.type === "credit" ? "text-emerald-500" : "text-foreground"}`}>
+                        {txn.type === "credit" ? "+" : "-"}
+                        {formatCurrency(txn.amount)}
+                      </span>
+                      {txn.isUnusual && (
+                         <div title={txn.unusualReason || "Unusual activity detected"}>
+                            <AlertTriangle className="h-4 w-4 text-amber-500 cursor-help" />
+                         </div>
+                      )}
+                    </div>
                 ))
               ) : (
                 <div className="text-center py-4 text-muted-foreground">No recent transactions</div>

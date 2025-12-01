@@ -1,6 +1,8 @@
 import { OpenAI } from "openai"
 import { OpenAIStream, StreamingTextResponse } from "ai"
 import { createDirectClient } from "@/lib/supabase/direct-client"
+import { generateForecasts } from "@/lib/forecasting/simple-forecast"
+import { generateSavingsSuggestions } from "@/lib/savings/suggestions"
 
 // Set the runtime to nodejs for better compatibility
 export const runtime = "nodejs"
@@ -60,7 +62,8 @@ export async function POST(req: Request) {
       goals,
       rewardProfileResult,
       rewardActivities,
-      supportTickets
+      supportTickets,
+      budgets
     ] = await Promise.all([
       fetchData("cards", userId),
       fetchData("loans", userId),
@@ -69,7 +72,8 @@ export async function POST(req: Request) {
       fetchData("savings_goals", userId),
       fetchData("reward_profiles", userId), // This returns an array, we take first
       fetchData("reward_activities", userId),
-      fetchData("support_tickets", userId)
+      fetchData("support_tickets", userId),
+      fetchData("budgets", userId)
     ])
 
     // 3. Fetch Transactions (using account IDs)
@@ -106,6 +110,117 @@ export async function POST(req: Request) {
     }
 
     const rewardProfile = rewardProfileResult.length > 0 ? rewardProfileResult[0] : null
+
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now)
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+    const toNumber = (value: any) => {
+      const num = Number(value)
+      return Number.isFinite(num) ? num : 0
+    }
+
+    const totalBalance = accounts.reduce((sum: number, account: any) => sum + toNumber(account.balance), 0)
+    const availableCash = accounts.reduce(
+      (sum: number, account: any) => sum + toNumber(account.available_balance ?? account.balance),
+      0,
+    )
+
+    const txLast30Days = transactions.filter((tx: any) => {
+      const txDate = new Date(tx.date)
+      return !Number.isNaN(txDate.getTime()) && txDate >= thirtyDaysAgo
+    })
+
+    const monthlySpending = txLast30Days.reduce(
+      (sum: number, tx: any) => sum + Math.abs(toNumber(tx.amount)),
+      0,
+    )
+
+    const categoryTotals = txLast30Days.reduce((acc: Record<string, number>, tx: any) => {
+      const category = tx.category || "uncategorized"
+      acc[category] = (acc[category] || 0) + Math.abs(toNumber(tx.amount))
+      return acc
+    }, {})
+
+    const topCategoryEntry = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]
+    const recentTransactions = transactions.slice(0, 5).map((tx: any) => ({
+      date: tx.date,
+      description: tx.description,
+      amount: toNumber(tx.amount),
+      category: tx.category,
+      type: tx.type,
+      isUnusual: tx.is_unusual,
+      unusualReason: tx.unusual_reason,
+    }))
+
+    // Calculate Forecasts
+    const typedTransactions = transactions.map((t: any) => ({
+      ...t,
+      amount: toNumber(t.amount),
+    }))
+    const forecasts = generateForecasts(typedTransactions).slice(0, 5) // Top 5 categories
+    const totalPredictedSpend = forecasts.reduce((sum, f) => sum + f.predictedAmount, 0)
+    
+    // Generate Savings Suggestions
+    const savingsOpportunities = generateSavingsSuggestions(typedTransactions)
+
+    const unusualActivity = transactions
+      .filter((tx: any) => tx.is_unusual)
+      .slice(0, 5)
+      .map((tx: any) => ({
+        date: tx.date,
+        description: tx.description,
+        amount: toNumber(tx.amount),
+        reason: tx.unusual_reason,
+      }))
+
+    // Calculate Budget Status (Calendar Month)
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+    const thisMonthSpendingByCategory = transactions.reduce((acc: Record<string, number>, tx: any) => {
+      const d = new Date(tx.date)
+      if (d.getMonth() === currentMonth && d.getFullYear() === currentYear && tx.type === 'debit') {
+         const cat = (tx.category || "uncategorized").toLowerCase()
+         acc[cat] = (acc[cat] || 0) + Math.abs(toNumber(tx.amount))
+      }
+      return acc
+    }, {})
+
+    const budgetAlerts = budgets.map((b: any) => {
+      const spend = thisMonthSpendingByCategory[b.category.toLowerCase()] || 0
+      const limit = Number(b.amount)
+      const percentage = (spend / limit) * 100
+      
+      if (percentage >= 80) {
+        return {
+          category: b.category,
+          spend,
+          limit,
+          percentage: Math.round(percentage),
+          status: percentage >= 100 ? "exceeded" : "warning"
+        }
+      }
+      return null
+    }).filter(Boolean)
+
+    const realTimeSnapshot = {
+      generatedAt: now.toISOString(),
+      totalBalance,
+      availableCash,
+      monthlySpendingLast30Days: monthlySpending,
+      daysCaptured: 30,
+      topSpendingCategory: topCategoryEntry
+        ? { category: topCategoryEntry[0], amount: topCategoryEntry[1] }
+        : null,
+      recentTransactions,
+      unusualActivity,
+      budgetAlerts,
+      forecasts: {
+        nextMonthTotal: totalPredictedSpend,
+        breakdown: forecasts
+      },
+      savingsOpportunities
+    }
 
     // Prepare System Prompt
     const systemPrompt = `
@@ -148,6 +263,9 @@ ${JSON.stringify(goals, null, 2)}
 - Profile: ${JSON.stringify(rewardProfile, null, 2)}
 - Recent Activity: ${JSON.stringify(rewardActivities.slice(0, 10), null, 2)}
 
+REAL-TIME SNAPSHOT:
+${JSON.stringify(realTimeSnapshot, null, 2)}
+
 GUIDELINES:
 - Answer based ONLY on the provided data.
 - If the user asks about "this month" or "this year", filter the transactions in the data provided.
@@ -176,6 +294,11 @@ EXAMPLE CHART:
 \`\`\`
 
 If asked about spending breakdowns or comparisons, ALWAYS include a chart.
+
+RESPONSE STYLE:
+- Start with a one-line health summary referencing the real-time snapshot (balances/spending).
+- Highlight any unusual activity from recentTransactions immediately.
+- Offer proactive suggestions when spending spikes or balances drop.
 `
 
     // Log for debugging

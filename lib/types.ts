@@ -45,6 +45,8 @@ export type TransactionCategory =
   | "fees"
   | "other"
 
+export type TransactionCategorySource = "seed" | "auto_rule" | "manual" | "ai"
+
 export interface Transaction {
   id: string
   accountId: string
@@ -52,6 +54,11 @@ export interface Transaction {
   description: string
   merchant?: string
   category: TransactionCategory
+  categorySource?: TransactionCategorySource
+  categoryConfidence?: number
+  categoryReason?: string
+  isUnusual?: boolean
+  unusualReason?: string
   amount: number
   balance: number
   type: "credit" | "debit"

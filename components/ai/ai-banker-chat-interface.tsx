@@ -177,6 +177,7 @@ export function AIBankerChatInterface({ embedded = false, initialMessage }: AIBa
   const { currentRole, currentUser } = useRole()
   const [selectedScopes, setSelectedScopes] = useState<string[]>(["all"])
   const [escalateDialog, setEscalateDialog] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const { messages, input, handleInputChange, handleSubmit, setMessages, isLoading, setInput, append, error } = useChat({
@@ -215,6 +216,12 @@ export function AIBankerChatInterface({ embedded = false, initialMessage }: AIBa
     return () => clearTimeout(timeoutId)
   }, [messages])
 
+  useEffect(() => {
+    if (messages.length > 0) {
+      setLastSyncedAt(new Date())
+    }
+  }, [messages])
+
   const toggleScope = (scopeId: string) => {
     if (scopeId === "all") {
       setSelectedScopes(["all"])
@@ -246,6 +253,12 @@ export function AIBankerChatInterface({ embedded = false, initialMessage }: AIBa
             <div>
               <h3 className="text-lg font-semibold">AI Banker</h3>
               <p className="text-xs text-muted-foreground">Your personal banking assistant</p>
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                {lastSyncedAt
+                  ? `Live data refreshed at ${lastSyncedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                  : "Awaiting first response"}
+              </p>
             </div>
           </div>
           <Badge variant="outline" className="text-xs">
