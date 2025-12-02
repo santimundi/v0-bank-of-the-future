@@ -89,3 +89,4 @@ export function generateSavingsSuggestions(transactions: Transaction[]): SavingS
   return suggestions.sort((a, b) => b.potentialSavings - a.potentialSavings).slice(0, 3)
 }
 
+

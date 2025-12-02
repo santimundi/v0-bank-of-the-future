@@ -79,3 +79,4 @@ export function generateForecasts(transactions: Transaction[]): ForecastResult[]
   return forecasts.sort((a, b) => b.predictedAmount - a.predictedAmount)
 }
 
+
